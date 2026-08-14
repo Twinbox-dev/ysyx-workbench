@@ -32,10 +32,13 @@ sim:
 run:
 	$(BUILD_DIR)/V$(MODULE)
 
+view:
+	gtkwave dump.*
+
 clean:
 	rm -rf $(BUILD_DIR) *.vcd *.fst
 
-.PHONY: all sim run clean
+.PHONY: all sim run clean view
 
 include ../Makefile
 
