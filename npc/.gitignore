@@ -10,3 +10,5 @@
 !.gitignore
 !README.md
 build/
+*.fst
+*.vcd
