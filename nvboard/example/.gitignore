@@ -1,2 +1,3 @@
 !resource/*.hex
+!resource/*.py
 !constr/*.nxdc

@@ -15,11 +15,15 @@ build/top: $(VSRCS) $(CSRCS) $(NVBOARD_SRCS)
 		--Mdir build/obj_dir -o $(abspath $@) \
 		-CFLAGS "-I$(NVBOARD_HOME)/usr/include $(SDL_CFLAGS)" \
 		-LDFLAGS "$(SDL_LIBS)"
+	$(call git_commit, "sim RTL") # DO NOT REMOVE THIS LINE!!!
 
 run: build/top
-	./build/top
+	@$^
 
 clean:
 	rm -rf build
 
 .PHONY: run clean
+
+include $(NPC_HOME)/../Makefile
+
