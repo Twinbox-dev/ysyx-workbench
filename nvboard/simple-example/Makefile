@@ -17,13 +17,16 @@ build/top: $(VSRCS) $(CSRCS) $(NVBOARD_SRCS)
 		-LDFLAGS "$(SDL_LIBS)"
 	$(call git_commit, "sim RTL") # DO NOT REMOVE THIS LINE!!!
 
+lint: $(VSRCS)
+	@verilator --lint-only -Wall --top-module $(TOPNAME) $(VSRCS)
+
 run: build/top
 	@$^
 
 clean:
 	rm -rf build
 
-.PHONY: run clean
+.PHONY: run clean lint
 
 include $(NPC_HOME)/../Makefile
 

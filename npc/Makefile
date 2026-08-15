@@ -20,25 +20,30 @@ endif
 VSRCS = $(filter-out $(VSRC_DIR)/example.v,   $(wildcard $(VSRC_DIR)/*.v))
 CSRCS = $(filter-out $(CSRC_DIR)/example.cpp, $(wildcard $(CSRC_DIR)/*.cpp))
 
+
+
 # =========== 默认目标：编译并运行仿真 ============
-all: sim run
+all: lint sim run
+
+lint: $(VSRCS)
+	@verilator --lint-only -Wall --top-module $(MODULE) $(VSRCS)
 
 # 编译 Verilator 仿真
-sim:
+sim: $(VSRCS) $(CSRCS)
 	@mkdir -p $(BUILD_DIR)
-	$(VERILATOR) $(VERILATOR_FLAGS) --top-module $(MODULE) $(VSRCS) $(CSRCS) --Mdir $(BUILD_DIR)	
-	$(call git_commit, "sim RTL") # DO NOT REMOVE THIS LINE!!!
+	$(VERILATOR) $(VERILATOR_FLAGS) --top-module $(MODULE) $^ --Mdir $(BUILD_DIR)
+	@$(call git_commit, "sim RTL") # DO NOT REMOVE THIS LINE!!!
 
 run:
 	$(BUILD_DIR)/V$(MODULE)
 
-view:
-	gtkwave dump.*
+view: 
+	@gtkwave dump.*
 
 clean:
 	rm -rf $(BUILD_DIR) *.vcd *.fst
 
-.PHONY: all sim run clean view
+.PHONY: all sim run clean view lint
 
 include ../Makefile
 
