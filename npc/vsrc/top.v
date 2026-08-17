@@ -1,8 +1,22 @@
+/* top.v */
 module top(
-    input a,
-    input b,    
-    output result
+    input clk,
+    input rst,
+    output reg [15:0] led
 );
-    // 双控开关逻辑：当a和b不同时输出1，相同时输出0
-    assign result = a^b;
+    reg [31:0] count;
+	always @(posedge clk) begin;
+		if (rst) begin
+			led   <= 16'b0000_0000_0000_0001;
+			count <= 32'b0;
+		end else begin
+			if (count >= 32'd10) begin
+            	led   <= {led[14:0], led[15]};
+            	count <= 32'b0;
+        	end else begin
+            	led   <= led;
+            	count <= count + 32'd1;
+			end
+		end
+	end
 endmodule

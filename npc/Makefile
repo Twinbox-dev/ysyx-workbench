@@ -41,7 +41,7 @@ view:
 	@gtkwave dump.*
 
 clean:
-	rm -rf $(BUILD_DIR) *.vcd *.fst
+	rm -rf $(BUILD_DIR) *.vcd* *.fst*
 
 .PHONY: all sim run clean view lint
 
