@@ -71,8 +71,8 @@ CSRC     := $(firstword $(foreach f,$(CPP_CAND),$(if $(wildcard $(f)),$(f),)))
 endif
 
 # 如果没有找到 cpp 文件，报错提示用户
-# 同样只在非 help/clean_all 目标时检查
-ifneq ($(filter-out help clean_all,$(MAKECMDGOALS)),)
+# 同样只在非 help/clean_all/lint 目标时检查
+ifneq ($(filter-out help clean_all lint,$(MAKECMDGOALS)),)
 ifeq ($(strip $(CSRC)),)
 $(error 找不到 C++ 文件，请提供 $(DIR)/csrc/main.cpp 或 $(DIR)/csrc/$(MODULE)-main.cpp，或用 CSRC=... 指定)
 endif
