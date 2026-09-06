@@ -25,8 +25,8 @@ MODULE ?= top        # 顶层模块名
 CSRC   ?=            # 可选的 cpp 文件（一般不用手动指定）
 WAVES  ?= 0          # 默认不生成波形 (0: 关闭, 1: VCD, 2: FST)
 
-# ---- 检查 DIR（仅当用户执行了除 help/clean_all 之外的目标时才强制）----
-ifneq ($(filter-out help clean_all,$(MAKECMDGOALS)),)
+# ---- 检查 DIR（仅当用户执行了除 help/clean_all/lint 之外的目标时才强制）----
+ifneq ($(filter-out help clean_all lint,$(MAKECMDGOALS)),)
 ifeq ($(strip $(DIR)),)
 $(error 用法: make DIR=<模块文件夹> [VSRC=...] [MODULE=...] sim|run|lint|clean)
 endif
@@ -155,7 +155,7 @@ sim: $(SIMBIN)
 
 # lint：只检查 verilog 语法，不编译
 lint: $(VSRCS_ABS)
-	@verilator --lint-only -Wall --top-module $(MODULE) $(VSRCS_ABS)
+	@verilator --lint-only -Wall -Wno-DECLFILENAME --top-module $(MODULE) $(VSRCS_ABS)
 
 # clean：删除当前模块的构建目录
 clean:
