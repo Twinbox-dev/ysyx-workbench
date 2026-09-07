@@ -1,5 +1,5 @@
 module top(
-    input        en,       // SW8 - enable
+    input        en,      // SW8 - enable
     input  [7:0] x,       // SW7-SW0 - 8-bit input
     output [3:0] led,     // LD3-LD0: led[2:0] = encoded result, led[3] = valid bit
     output [7:0] seg      // SEG0: 7-segment display output (active-low)

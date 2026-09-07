@@ -1,5 +1,5 @@
 #include <verilated_vcd_c.h>
-#include <Vencode42.h>
+#include <Vpriority_encode42.h>
 
 #include <cstdio>
 #include <cstdint>
@@ -7,7 +7,7 @@
 
 VerilatedContext* contextp = NULL;
 VerilatedVcdC* tfp = NULL;
-static Vencode42* top = NULL;
+static Vpriority_encode42* top = NULL;
 
 void step_and_dump_wave() {
     top->eval();
@@ -18,7 +18,7 @@ void step_and_dump_wave() {
 void sim_init() {
     contextp = new VerilatedContext;
     tfp = new VerilatedVcdC;
-    top = new Vencode42;
+    top = new Vpriority_encode42;
 
     contextp->traceEverOn(true);
     top->trace(tfp, 0);
@@ -66,7 +66,7 @@ int main() {
     int n = sizeof(tests) / sizeof(tests[0]);
     int pass = 0;
 
-    printf("===== Encode42 Verilator Simulation =====\n");
+    printf("===== priority_encode42 Verilator Simulation =====\n");
 
     for (int i = 0; i < n; i++) {
         top->en = tests[i].en;
@@ -85,7 +85,7 @@ int main() {
                expect,
                ok ? "[PASS]" : "[FAIL]");
 
-        assert(ok && "encode42 output mismatch!");
+        assert(ok && "priority_encode42 output mismatch!");
         pass++;
     }
 

@@ -52,6 +52,92 @@ module adder_subtractor (
 endmodule
 
 
+/* verilator lint_off DECLFILENAME */
+// =============================================================================
+// 提供结构化建模的多路选择器模块
+// =============================================================================
+module MuxKeyInternal #(
+	NR_KEY      = 2,
+	KEY_LEN     = 1,
+	DATA_LEN    = 1,
+	HAS_DEFAULT = 0
+) (
+	output reg [DATA_LEN-1:0] out,
+	input      [KEY_LEN-1:0] key,
+	input      [DATA_LEN-1:0] default_out,
+	input      [NR_KEY*(KEY_LEN + DATA_LEN)-1:0] lut
+);
+
+	localparam PAIR_LEN = KEY_LEN + DATA_LEN;
+
+	wire [PAIR_LEN-1:0] pair_list [NR_KEY-1:0];
+	wire [KEY_LEN-1:0]  key_list  [NR_KEY-1:0];
+	wire [DATA_LEN-1:0] data_list [NR_KEY-1:0];
+
+	generate
+		for (genvar n = 0; n < NR_KEY; n = n + 1) begin : gen_lut
+			assign pair_list[n] = lut[PAIR_LEN*(n+1)-1 : PAIR_LEN*n];
+			assign data_list[n] = pair_list[n][DATA_LEN-1:0];
+			assign key_list[n]  = pair_list[n][PAIR_LEN-1:DATA_LEN];
+		end
+	endgenerate
+
+	reg [DATA_LEN-1:0] lut_out;
+	reg hit;
+	integer i;
+
+	always @(*) begin
+		lut_out = 0;
+		hit     = 0;
+		for (i = 0; i < NR_KEY; i = i + 1) begin
+			lut_out = lut_out | ({DATA_LEN{key == key_list[i]}} & data_list[i]);
+			hit     = hit | (key == key_list[i]);
+		end
+		if (!HAS_DEFAULT)
+			out = lut_out;
+		else
+			out = (hit ? lut_out : default_out);
+	end
+
+endmodule
+
+module MuxKey #(
+	NR_KEY   = 2,
+	KEY_LEN  = 1,
+	DATA_LEN = 1
+) (
+	output [DATA_LEN-1:0] out,
+	input  [KEY_LEN-1:0] key,
+	input  [NR_KEY*(KEY_LEN + DATA_LEN)-1:0] lut
+);
+	MuxKeyInternal #(NR_KEY, KEY_LEN, DATA_LEN, 0) i0 (
+		.out        (out),
+		.key        (key),
+		.default_out({DATA_LEN{1'b0}}),
+		.lut        (lut)
+	);
+endmodule
+
+module MuxKeyWithDefault #(
+	NR_KEY   = 2,
+	KEY_LEN  = 1,
+	DATA_LEN = 1
+) (
+	output [DATA_LEN-1:0] out,
+	input  [KEY_LEN-1:0] key,
+	input  [DATA_LEN-1:0] default_out,
+	input  [NR_KEY*(KEY_LEN + DATA_LEN)-1:0] lut
+);
+	MuxKeyInternal #(NR_KEY, KEY_LEN, DATA_LEN, 1) i0 (
+		.out        (out),
+		.key        (key),
+		.default_out(default_out),
+		.lut        (lut)
+	);
+endmodule
+/* verilator lint_on DECLFILENAME */
+
+
 // =============================================================================
 // 顶层 ALU
 // =============================================================================
@@ -96,13 +182,34 @@ module top (
     // sub_result = A - B (补码)
     // 有符号 A < B:
     //   若 A-B 为负(Result[3]=1) 且 未溢出 -> 真
-    //   若 A-B 为正(Result[3]=0) 且 溢出   -> 真
+    //   若 A-B 为正(Result[3]=0) 且 溢出   -> 真   <-- Tip: 加减法器执行减法操作时，溢出意味着两个输入数符号相反
     //   Lt = (sub_result[3] & ~sub_of) | (~sub_result[3] & sub_of)
     //      = sub_result[3] ^ sub_of
     assign Lt = (S == 3'b110) ? (sub_result[3] ^ sub_of) : 1'b0;
     assign Eq = (S == 3'b111) ? sub_zero : 1'b0;
 
-    // ---------- 多路选择器 (8选1) ----------
+    // ---------- 多路选择器 (4位8选1) ----------
+    MuxKeyWithDefault #(
+	    .NR_KEY(4'd8),
+	    .KEY_LEN(3),
+	    .DATA_LEN(4)
+        ) u1 (
+        .out(Result),
+        .key(S),
+        .default_out(4'b0000),
+        .lut({
+            3'b000,add_result,
+            3'b001,sub_result,
+            3'b010,notA,
+            3'b011,andAB,
+            3'b100,orAB,
+            3'b101,xorAB,
+            3'b110,{3'b000, Lt},
+            3'b111,{3'b000, Eq}
+            })
+        );
+
+    /*
     reg [3:0] result_mux;
     always @(*) begin
         case (S)
@@ -118,6 +225,7 @@ module top (
         endcase
     end
     assign Result = result_mux;
+    */
 
     // ---------- 标志位生成 ----------
     // Zero: Result 全0
