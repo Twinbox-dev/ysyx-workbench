@@ -2,8 +2,7 @@
 // 8 位 LFSR 伪随机数发生器：仿真测试 + nvboard 展示
 //
 // 用法：
-//   make DIR=6_shifter MODULE=top VSRC="lfsr.v top.v" sim
-//   make DIR=6_shifter MODULE=top VSRC="lfsr.v top.v" run
+//   make DIR=6_shifter VSRC="top.v" lint sim run
 //
 // nvboard 操作：
 //   SW15 拨到 1 解除复位，然后反复点 BTNC，看数码管和 LED 的变化
@@ -14,10 +13,6 @@
 #include <cassert>
 #include <cstdint>
 #include <Vtop.h>
-
-#ifndef SIM_ONLY
-#include <nvboard.h>
-#endif
 
 static Vtop *dut = new Vtop;
 
@@ -351,6 +346,7 @@ int main() {
 }
 
 #else   // ===================== nvboard =====================
+#include <nvboard.h>
 
 int main() {
     // 输入
@@ -361,7 +357,7 @@ int main() {
 
     // 输出：8 位状态同时用 LED（二进制）和数码管（十六进制）显示
     nvboard_bind_pin(&dut->q, 8, LD7, LD6, LD5, LD4, LD3, LD2, LD1, LD0);
-    nvboard_bind_pin(&dut->zero_flag, 1, LD15);
+    nvboard_bind_pin(&dut->zero_flag, 1, LD15); // !理论上来说不可能亮
     nvboard_bind_pin(&dut->seg0, 8, SEG0A, SEG0B, SEG0C, SEG0D, SEG0E, SEG0F, SEG0G, DEC0P);
     nvboard_bind_pin(&dut->seg1, 8, SEG1A, SEG1B, SEG1C, SEG1D, SEG1E, SEG1F, SEG1G, DEC1P);
 
@@ -370,7 +366,7 @@ int main() {
     dut->din  = 0;
 
     nvboard_init();
-    reset(10);
+    reset(100);
 
     while (1) {
         nvboard_update();
