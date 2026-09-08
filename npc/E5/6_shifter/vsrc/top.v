@@ -1,0 +1,293 @@
+// =============================================================================
+// LFSR 伪随机数发生器 —— 顶层模块
+//
+// 验收要求：
+//   - 8 位、周期 255 的伪随机序列发生器
+//   - 用按钮作为时钟信号
+//   - 用两个七段数码管以十六进制显示 8bit 
+//
+// 引脚分配（nvboard）：
+//   BTNC       -> 前进一步（消抖后每次按下走一个状态）
+//   SW15       -> 复位（低有效，即拨到 0 时复位）
+//   SW14       -> 装入 SW7~SW0 作为新的初值
+//   SW7~SW0    -> 装入的初值
+//   SEG1 SEG0  -> 当前状态的两位十六进制
+//   LD7~LD0    -> 当前状态的 8 位二进制（便于直接观察移位过程）
+//   LD15       -> 全零锁死指示（正常不该亮）
+//
+// 用 LED 同时显示二进制，是因为"看着某一位一步步右移"比看十六进制更容易理解 LFSR 的工作方式。
+// make DIR=6_shifter VSRC=lfsr_top.v lint sim run
+// =============================================================================
+
+module top (
+    input  wire       clk,
+    input  wire       rst_n,      // 低有效复位
+    input  wire       btn,        // 前进按钮
+    input  wire       load,       // 装入初值
+    input  wire [7:0] din,        // 初值
+
+    output wire [7:0] q,          // 当前状态（接 LED）
+    output wire       zero_flag,  // 全零指示
+    output wire [7:0] seg0,       // 低位十六进制
+    output wire [7:0] seg1        // 高位十六进制
+);
+
+    // 按钮消抖并转成单周期脉冲，作为 LFSR 的使能
+    // 注意：真正的时钟始终是 clk，按钮只是使能信号
+    wire step;
+
+    button_pulse #(
+        .STABLE_CNT(16'd50000)
+    ) btn_deb (
+        .clk   (clk),
+        .rst_n (rst_n),
+        .btn   (btn),
+        .pulse (step)
+    );
+
+    lfsr8 #(
+        .SEED(8'h01)
+    ) prng (
+        .clk     (clk),
+        .rst_n   (rst_n),
+        .en      (step),
+        .load    (load),
+        .din     (din),
+        .q       (q),
+        .is_zero (zero_flag)
+    );
+
+    // 十六进制显示
+    lfsr_seg7 s0 (.hex(q[3:0]), .seg(seg0));
+    lfsr_seg7 s1 (.hex(q[7:4]), .seg(seg1));
+
+endmodule
+
+
+// =============================================================================
+// 8 位线性反馈移位寄存器（LFSR）伪随机数发生器
+//
+// 讲义中的反馈式（x7 x6 x5 x4 x3 x2 x1 x0 从左到右）：
+//
+//     x8 = x4 ^ x3 ^ x2 ^ x0
+//
+// 每个时钟右移一位：最高位移入上一周期算出的 x8; x0 移出
+// 这样能产生周期为 2^8 - 1 = 255 的伪随机序列，遍历除全零外的所有状态。
+//
+// 讲义给出的示例序列（初值 00000001）：
+//     00000001 -> 10000000 -> 01000000 -> 00100000 -> 00010000 -> 10001000 -> ...
+// 本实现与之逐拍一致（csrc 里的仿真测试会核对）。
+//
+// -----------------------------------------------------------------------------
+// 全零锁死状态
+//
+// 若状态变成全零，反馈位算出来也是 0，此后将永远停在全零——讲义明确提醒了这点
+// （"将一直停留在全零状态"）。所以必须特殊处理。
+//
+// 这里的做法是让复位值为非零的 SEED，并且在 load 置数时把全零替换成 SEED。
+// 另一种常见做法是把反馈式改成 x8 = ~(...)，让全零变成合法状态、全一变成锁死态
+// （称为 "de Bruijn 序列"，周期 256）；那样周期不再是讲义要求的 255，所以没用。
+// =============================================================================
+
+module lfsr8 #(
+    parameter [7:0] SEED = 8'h01      // 复位后的初始状态，必须非零
+) (
+    input  wire       clk,
+    input  wire       rst_n,          // 同步复位（低有效），置为 SEED
+    input  wire       en,             // 为 1 时每个时钟前进一步
+    input  wire       load,           // 为 1 时把 din 装入（优先于 en）
+    input  wire [7:0] din,            // 装入的初值
+    output wire [7:0] q,              // 当前状态（即伪随机输出）
+    output wire       is_zero         // 状态为全零的指示（正常不该出现）
+);
+
+    // 反馈位：按讲义的 x4 ^ x3 ^ x2 ^ x0
+    wire feedback = q[4] ^ q[3] ^ q[2] ^ q[0];
+
+    // 右移：低位移出，反馈位补到最高位
+    wire [7:0] next = {feedback, q[7:1]};
+
+    // 装入全零会导致锁死，这里换成 SEED
+    wire [7:0] load_value = (din == 8'h00) ? SEED : din;
+
+    // 用 Reg 模板实现状态寄存器
+    // 写入使能：load 或 en 有效时写入；load 优先选择数据
+    wire [7:0] q_din = load ? load_value : next;
+    wire       q_wen = load | en;
+
+    Reg #(
+        .WIDTH    (8),
+        .RESET_VAL(SEED)
+    ) q_reg (
+        .clk (clk),
+        .rst (~rst_n),
+        .din (q_din),
+        .dout(q),
+        .wen (q_wen)
+    );
+
+    assign is_zero = (q == 8'h00);
+
+endmodule
+
+
+// =============================================================================
+// 十六进制数字 -> 七段数码管段码
+//
+// 位序与 nvboard 的引脚绑定顺序一致：
+//   seg[7]=A seg[6]=B seg[5]=C seg[4]=D seg[3]=E seg[2]=F seg[1]=G seg[0]=DP
+// 段码共阳极 -> 低电平有效 
+//   _ 0
+// 5|_|1
+// 4| |2
+// 3 ‾   .7
+// =============================================================================
+module lfsr_seg7 (
+    input  wire [3:0] hex,
+    output wire [7:0] seg
+);
+
+    // 段码按 {A,B,C,D,E,F,G} 排列，1 = 点亮
+    reg [6:0] pattern;
+
+    always @(*) begin
+        case (hex)
+            4'h0: pattern = 7'b1111110;
+            4'h1: pattern = 7'b0110000;
+            4'h2: pattern = 7'b1101101;
+            4'h3: pattern = 7'b1111001;
+            4'h4: pattern = 7'b0110011;
+            4'h5: pattern = 7'b1011011;
+            4'h6: pattern = 7'b1011111;
+            4'h7: pattern = 7'b1110000;
+            4'h8: pattern = 7'b1111111;
+            4'h9: pattern = 7'b1111011;
+            4'hA: pattern = 7'b1110111;
+            4'hB: pattern = 7'b0011111;
+            4'hC: pattern = 7'b1001110;
+            4'hD: pattern = 7'b0111101;
+            4'hE: pattern = 7'b1001111;
+            4'hF: pattern = 7'b1000111;
+            default: pattern = 7'b0000000;
+        endcase
+    end
+
+    // 取反转成低有效，最低位是小数点（恒不亮）
+    assign seg = {~pattern, 1'b1};
+
+endmodule
+
+
+// =============================================================================
+// 按钮消抖 + 单脉冲
+//
+// 讲义要求"用按钮作为时钟信号"。机械按钮按下时触点会在几毫秒内反复弹跳，
+// 若直接当时钟用，一次按下会产生几十个脉冲，LFSR 会一下跳过很多状态。
+//
+// 这里的处理分两步：
+//   1. 消抖：输入连续保持同一电平达到 STABLE_CNT 个时钟才认可这次变化
+//   2. 取上升沿：只在"稳定后由 0 变 1"的那一拍输出一个周期的脉冲
+//
+// 输出 pulse 接到 lfsr8 的 en 上，这样一次按下正好前进一步。真正的时钟始终是
+// 板载时钟，按钮只是一个使能信号——**不要把按钮直接接到 clk 上**，那是常见的
+// 新手错误（按钮信号没走时钟网络，且弹跳会产生大量毛刺时钟沿）。
+// =============================================================================
+
+module button_pulse #(
+    parameter STABLE_CNT = 16'd50000   // 稳定阈值，50MHz 下约 1ms
+) (
+    input  wire clk,
+    input  wire rst_n,
+    input  wire btn,       // 原始按钮输入（高有效）
+    output wire pulse      // 一次按下输出一个时钟周期的脉冲
+);
+
+    // 两级同步，把异步的按钮信号同步到 clk 域
+    wire [1:0] btn_sync;
+
+    Reg #(
+        .WIDTH    (2),
+        .RESET_VAL(0)
+    ) btn_sync_reg (
+        .clk (clk),
+        .rst (~rst_n),
+        .din ({btn_sync[0], btn}),
+        .dout(btn_sync),
+        .wen (1'b1)
+    );
+
+    wire btn_s = btn_sync[1];
+
+    // 消抖计数器：输入与当前认可值不同就计数，计满则更新认可值
+    wire [15:0] cnt;
+    wire        btn_stable;
+
+    // 组合逻辑计算计数器和稳定值的下一个状态
+    wire        cnt_update  = (btn_s != btn_stable);
+    wire [15:0] cnt_next    = (cnt_update && (cnt < STABLE_CNT))
+                                ? (cnt + 16'd1)
+                                : 16'd0;
+    wire       stable_wen   = cnt_update && (cnt >= STABLE_CNT);
+
+    Reg #(
+        .WIDTH    (16),
+        .RESET_VAL(0)
+    ) cnt_reg (
+        .clk (clk),
+        .rst (~rst_n),
+        .din (cnt_next),
+        .dout(cnt),
+        .wen (1'b1)
+    );
+
+    Reg #(
+        .WIDTH    (1),
+        .RESET_VAL(0)
+    ) btn_stable_reg (
+        .clk (clk),
+        .rst (~rst_n),
+        .din (btn_s),
+        .dout(btn_stable),
+        .wen (stable_wen)
+    );
+
+    // 对消抖后的信号取上升沿
+    wire btn_stable_d;
+
+    Reg #(
+        .WIDTH    (1),
+        .RESET_VAL(0)
+    ) btn_stable_d_reg (
+        .clk (clk),
+        .rst (~rst_n),
+        .din (btn_stable),
+        .dout(btn_stable_d),
+        .wen (1'b1)
+    );
+
+    assign pulse = btn_stable & ~btn_stable_d;
+
+endmodule
+
+
+// =============================================================================
+// 触发器模板，内部采用的是同步复位信号
+// =============================================================================
+module Reg #(
+    WIDTH     = 1,
+    RESET_VAL = 0
+) (
+    input                  clk,
+    input                  rst,
+    input  [WIDTH-1:0]     din,
+    output reg [WIDTH-1:0] dout,
+    input                  wen
+);
+    always @(posedge clk) begin
+        if (rst) begin
+            dout <= RESET_VAL;
+        end else if (wen) begin
+            dout <= din;
+        end
+    end
+endmodule

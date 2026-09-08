@@ -1,9 +1,7 @@
-/* verilator lint_off DECLFILENAME */
-
 // =====================================================================
 // MuxKey 系列
 // =====================================================================
-
+/* verilator lint_off DECLFILENAME */
 module MuxKeyInternal #(
     NR_KEY = 2,
     KEY_LEN = 1,
@@ -68,29 +66,10 @@ module MuxKey #(
         .lut(lut)
     );
 endmodule
-
-
-module MuxKeyWithDefault #(
-    NR_KEY = 2,
-    KEY_LEN = 1,
-    DATA_LEN = 1
-) (
-    output [DATA_LEN-1:0] out,
-    input  [KEY_LEN-1:0] key,
-    input  [DATA_LEN-1:0] default_out,
-    input  [NR_KEY*(KEY_LEN + DATA_LEN)-1:0] lut
-);
-    MuxKeyInternal #(NR_KEY, KEY_LEN, DATA_LEN, 1) i0 (
-        .out(out),
-        .key(key),
-        .default_out(default_out),
-        .lut(lut)
-    );
-endmodule
-
+/* verilator lint_on DECLFILENAME */
 
 // =====================================================================
-// 8位桶形移位器
+// 8位桶形移位器 - 需要实例化3个4路8bit输入的选择器
 //
 // 控制编码（每个 MUX4_1）：
 //   sel[1] = L/R (1=左移, 0=右移)
