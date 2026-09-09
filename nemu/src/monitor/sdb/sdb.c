@@ -18,6 +18,7 @@
 #include <readline/readline.h>
 #include <readline/history.h>
 #include "sdb.h"
+#include <memory/vaddr.h>
 
 static int is_batch_mode = false;
 
@@ -79,6 +80,40 @@ static int cmd_info(char* args){
 	return 0;
 }
 
+static int cmd_x(char *args) {
+    char *arg_n    = strtok(NULL, " ");
+    char *arg_addr = strtok(NULL, " ");
+
+    if (arg_n == NULL || arg_addr == NULL) {
+        printf("Usage: x N EXPR\n");
+        return 0;
+    }
+
+    char *end = NULL;
+    int n = strtol(arg_n, &end, 10);
+    if (*end != '\0' || n < 0) {
+        printf("N should be a non-negative integer\n");
+        return 0;
+    }
+
+    vaddr_t addr = (vaddr_t) strtoul(arg_addr, &end, 16);
+    if (*end != '\0') {
+        printf("Bad address: %s\n", arg_addr);
+        return 0;
+    }
+
+    for (int i = 0; i < n; i++) {
+        if (i % 4 == 0) printf(FMT_WORD ":", addr + i * 4);
+        printf(" " FMT_WORD, vaddr_read(addr + i * 4, 4));
+        if (i % 4 == 3) printf("\n");
+    }
+
+	// 补上最后一行不满 4 个时的换行
+    if (n % 4 != 0) printf("\n");
+
+    return 0;
+}
+
 static int cmd_help(char *args);
 
 static struct {
@@ -91,6 +126,8 @@ static struct {
   { "q", "Exit NEMU", cmd_q },
   { "si", "Execute N instructions step by step (default: 1)", cmd_si },
   { "info", "Display information: info r for registers", cmd_info },
+  { "x", "Scan N words of memory starting from EXPR: x N EXPR", cmd_x },
+
   /* TODO: Add more commands */
 
 };

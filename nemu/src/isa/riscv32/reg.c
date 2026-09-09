@@ -24,6 +24,19 @@ const char *regs[] = {
 };
 
 void isa_reg_display() {
+	 /*
+	  * MUXDEF(CONFIG_RVE, 16, 32): 编译期三目运算符—>CONlFIG_RVE被定义过就取 16,否则取32
+	  * nemu/include/common.h:#define FMT_WORD MUXDEF(CONFIG_ISA64, "0x%016" PRIx64, "0x%08"PRIx32)
+	  * PRIx64 PRIx32是C语言的预定义宏。具体见后续文档
+	  */
+    for (int i = 0; i < MUXDEF(CONFIG_RVE, 16, 32); i++) {
+        printf("%-4s " FMT_WORD, reg_name(i), gpr(i));
+        if (i % 4 == 3)
+			printf("\n");     // 每 4 个换行
+        else
+			printf(" ");
+    }
+    printf("%-4s " FMT_WORD "\n", "pc", cpu.pc);
 }
 
 word_t isa_reg_str2val(const char *s, bool *success) {
