@@ -49,8 +49,26 @@ static int cmd_c(char *args) {
 }
 
 static int cmd_q(char *args) {
+  Log("Exit nemu!");
   nemu_state.state = NEMU_QUIT;
   return -1;
+}
+
+/* p EXPR - 打印表达式的值 */
+static int cmd_p(char *args) {
+    // 直接用整个 args(无需经 strtok),因为expr内部已经进行了空格处理
+    if (args == NULL) {
+        printf("Usage: p EXPR\n");
+        return 0;
+    }
+
+    bool success = false;
+    word_t val = expr(args, &success);
+
+    if (success) printf("%u (0x%x)\n", val, val);
+    else         printf("Bad expression\n");
+
+    return 0;
 }
 
 static int cmd_si(char* args){
@@ -85,7 +103,7 @@ static int cmd_x(char *args) {
     char *arg_addr = strtok(NULL, " ");
 
     if (arg_n == NULL || arg_addr == NULL) {
-        printf("Usage: x N EXPR\n");
+        printf("Usage: x N EXPR, where EXPR is an expression (e.g. 0x80000000, $pc)\n");
         return 0;
     }
 
@@ -96,9 +114,10 @@ static int cmd_x(char *args) {
         return 0;
     }
 
-    vaddr_t addr = (vaddr_t) strtoul(arg_addr, &end, 16);
-    if (*end != '\0') {
-        printf("Bad address: %s\n", arg_addr);
+    bool success = false;
+    vaddr_t addr = (vaddr_t)expr(arg_addr, &success);
+    if (!success) {
+        printf("Bad expression: %s\n", arg_addr);
         return 0;
     }
 
@@ -127,7 +146,7 @@ static struct {
   { "si", "Execute N instructions step by step (default: 1)", cmd_si },
   { "info", "Display information: info r for registers", cmd_info },
   { "x", "Scan N words of memory starting from EXPR: x N EXPR", cmd_x },
-
+  { "p", "Evaluate the expression EXPR: p EXPR", cmd_p },
   /* TODO: Add more commands */
 
 };
@@ -155,6 +174,43 @@ static int cmd_help(char *args) {
     printf("Unknown command '%s'\n", arg);
   }
   return 0;
+}
+
+/* 批量表达式测试: 读取 gen-expr 生成的用例文件 (每行 "结果 表达式"),
+ * 调用 expr() 求值并与期望结果比对. */
+void sdb_expr_test(char *file) {
+    FILE *fp = fopen(file, "r");
+    Assert(fp, "Can not open '%s'", file);
+
+    char line[4096];
+    int pass = 0, fail = 0;
+
+    while (fgets(line, sizeof(line), fp)) {
+        /* 第一个空格前是期望值, 之后全部是表达式
+         * (表达式内部可能含空格, 所以不能用 sscanf("%u %s") 拆) */
+        char *space = strchr(line, ' ');
+        if (space == NULL) continue;
+        *space = '\0';
+
+        word_t expect = (word_t)strtoul(line, NULL, 10);
+
+        char *e = space + 1;
+        e[strcspn(e, "\n")] = '\0';     // 去掉 fgets 留下的行尾换行
+
+        bool success = false;
+        word_t val = expr(e, &success);
+
+        if (success && val == expect) {
+            pass++;
+        } else {
+            fail++;
+            printf("FAIL: %s = %u (expect %u)\n", e, val, expect);
+        }
+    }
+
+    fclose(fp);
+    printf("expr test: %d passed, %d failed\n", pass, fail);
+    exit(0);        // 测完直接退出, 不进交互界面
 }
 
 void sdb_set_batch_mode() {
