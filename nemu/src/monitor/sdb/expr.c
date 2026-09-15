@@ -14,6 +14,7 @@
 ***************************************************************************************/
 
 #include <isa.h>
+#include <memory/paddr.h>
 #include <regex.h>
 /* 
  * We use the POSIX regex functions to process regular expressions.
@@ -22,7 +23,9 @@
 
 enum {
 	TK_NOTYPE = 256,    // 空格, 识别后直接丢弃
-	// TK_EQ,              // "=="
+	TK_EQ,              // "=="
+	TK_NEQ,             // "!="
+    TK_AND,             // "&&"
 
 	TK_NUM,             // 十进制整数, 如 123
 	TK_HEX,             // 十六进制整数, 如 0x80000000
@@ -42,7 +45,10 @@ static struct rule {
 	{"0[xX][0-9a-fA-F]+",   TK_HEX},        // 十六进制整数
 	{"[0-9]+u?",            TK_NUM},        // 十进制整数 (u 后缀供任务 6 使用)
 	{"\\$[a-zA-Z0-9]+",     TK_REG},        // 寄存器 ($a0, $pc, ...)
-	// {"==",                  TK_EQ },        // equal
+	{"==",                  TK_EQ },        // equal
+	{"!=",					TK_NEQ},		// not equal
+	{"&&",					TK_AND},		// and
+
 
 	{"\\+",                 '+'},           // 加号
 	{"-",                   '-'},           // 减号 / 负号
@@ -166,6 +172,23 @@ static bool make_token(char *e) {
 
 
 // ========================== 基于词法分析得到的tokens,实现了表达式求值 ===================================
+/* ------------------------------------------------
+表达式求值的 BNF 拓展:
+<expr> ::= <decimal-number>
+        | <hexadecimal-number>      # 以 "0x" 开头
+        | <reg_name>                # 以 "$" 开头
+        | "(" <expr> ")"
+        | <expr> "+" <expr>
+        | <expr> "-" <expr>
+        | <expr> "*" <expr>
+        | <expr> "/" <expr>
+        | <expr> "==" <expr>
+        | <expr> "!=" <expr>
+        | <expr> "&&" <expr>
+        | "*" <expr>                # 指针解引用
+*/
+// ------------------------------------------------
+
 /* 检查 [p, q] 区间的括号, 返回:
  *    1 : 被一对匹配的括号整体包围        如 "(2 - 1)"
  *    0 : 括号匹配, 但不被整体包围        如 "4 + 3 * (2 - 1)"
@@ -221,7 +244,15 @@ static bool is_unary(int pos, int p) {
 static int find_main_op(int p, int q) {
 	int depth = 0;
 	int op = -1;
-	int op_prio = 99;        // 大于任何实际优先级 (1, 2)
+	int op_prio = 99;        // 大于任何实际优先级 (1, 2, 3, 4)
+	/*
+	 * 优先级判定,通过这一个式子就知道了:
+	 * (1 == 1 && 2 != 0 && 3 == 4 - 2 + 1 * 3) -> *\/
+	 * (1 == 1 && 2 != 0 && 3 == 4 - 2 + 3)     -> +-
+	 * (1 == 1 && 2 != 0 && 3 == 5)     		-> == !=
+	 * (1 && 1 && 0)     						-> &&
+	 * (0)
+	 */
 
 	for (int i = p; i <= q; i++) {
 		int t = tokens[i].type;
@@ -230,10 +261,17 @@ static int find_main_op(int p, int q) {
 			depth++;
 		} else if (t == ')') {
 			depth--;
-		} else if (depth == 0 && !is_unary(i, p)
-				&& (t == '+' || t == '-' || t == '*' || t == '/')) {
-			// 只有"括号外的" "非单目" "运算符token"才有可能是主运算符
-			int prio = (t == '+' || t == '-') ? 1 : 2;
+		} else if (// 只有"括号外的" "非单目" "运算符token"才有可能是主运算符
+					depth == 0
+					&& !is_unary(i, p)
+					&& (t == '+' || t == '-' || t == '*' || t == '/' || t == TK_EQ || t == TK_NEQ || t == TK_AND)
+				  )
+		{
+			int prio = 99;
+			if (t == TK_AND)              		prio = 1;   // 最低优先级，最后算
+			else if (t == TK_EQ || t == TK_NEQ) prio = 2;   // 次低
+			else if (t == '+' || t == '-') 		prio = 3;   // 中等
+			else if (t == '*' || t == '/') 		prio = 4;   // 最高，最先算
 			if (prio <= op_prio) {      // <= 保证取最右边的那个
 				op_prio = prio;
 				op = i;
@@ -269,10 +307,19 @@ static word_t eval(int p, int q, bool* success){
 	/* ④ 找主运算符. 找不到时, 区间可能是"单目运算符 + 子表达式", 如 "-1" */
 	int op = find_main_op(p, q);
 	if (op == -1) {
+		// 单目负号
 		if (p < q && tokens[p].type == '-') {
 			word_t val = eval(p + 1, q, success);
 			if (!*success) return 0;
 			return 0 - val;                 // 负号: -x 即 0 - x (无符号回绕)
+		}
+
+		// 单目解引用 *
+		if (p < q && tokens[p].type == '*') {
+			word_t addr = eval(p + 1, q, success);
+			if (!*success) return 0;
+			/* 从物理内存读一个 word_t（解引用语义）*/
+			return paddr_read(addr, sizeof(word_t));
 		}
 		*success = false;
 		return 0;
@@ -285,8 +332,11 @@ static word_t eval(int p, int q, bool* success){
 	if (!*success) return 0;
 
 	switch (tokens[op].type) {
+		case TK_EQ : return (val1 == val2) ? 1 : 0;
+		case TK_NEQ: return (val1 != val2) ? 1 : 0;
+		case TK_AND: return (val1 && val2) ? 1 : 0;
+
 		case '+': return val1 + val2;
-		
 		case '-': return val1 - val2;
 		case '*': return val1 * val2;
 		case '/':

@@ -226,7 +226,7 @@ void sdb_expr_test(char *file) {
         }
     }
 
-    fclose(fp);
+    if (fp != stdin) fclose(fp);
     printf(ANSI_FMT("expr test: %d passed, %d failed\n", ANSI_FG_GREEN), pass, fail);
     exit(0);        // 测完直接退出, 不进交互界面
 }
