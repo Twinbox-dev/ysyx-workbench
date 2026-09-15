@@ -179,23 +179,41 @@ static int cmd_help(char *args) {
 /* 批量表达式测试: 读取 gen-expr 生成的用例文件 (每行 "结果 表达式"),
  * 调用 expr() 求值并与期望结果比对. */
 void sdb_expr_test(char *file) {
-    FILE *fp = fopen(file, "r");
+    /*
+     * 默认用 stdin 作为输入.后续调用表达式求值的测试则可以直接:
+     * ./tools/gen-expr/build/gen-expr 10 | ./build/riscv32-nemu-interpreter -e
+     */
+    FILE *fp = stdin;
+
+    if (strcmp(file, "-") != 0){
+        fp = fopen(file, "r");
+    }
     Assert(fp, "Can not open '%s'", file);
 
     char line[4096];
     int pass = 0, fail = 0;
 
+    /*
+     * fgets(char* line[], int MAX_TOKEN, FILE* fp):
+     * 从 fp 里读取一整行（遇到 \n 或缓冲区满为止）
+     * 读到的内容（包括末尾的 \n）存入 line（最多读MAX_TOKEN个字符）
+     * 成功返回 line 指针，失败/到文件尾返回 NULL
+     */
     while (fgets(line, sizeof(line), fp)) {
-        /* 第一个空格前是期望值, 之后全部是表达式
-         * (表达式内部可能含空格, 所以不能用 sscanf("%u %s") 拆) */
-        char *space = strchr(line, ' ');
-        if (space == NULL) continue;
-        *space = '\0';
+        /* 
+         * 第一个空格前是期望值, 之后全部是表达式。结构是: result expr\n
+         * strchr 用于查找字符串中指定字符并返回该字符的指针
+         * (表达式内部可能含空格, 所以不能用 sscanf("%u %s") 拆) 
+         */
+        char *space = strchr(line,  ' ');
+        char *endl  = strchr(line, '\n');
+        if (space == NULL || endl == NULL) continue;
 
+        *space = '\0';
         word_t expect = (word_t)strtoul(line, NULL, 10);
 
+        *endl = '\0';     // 去掉 fgets 留下的行尾换行
         char *e = space + 1;
-        e[strcspn(e, "\n")] = '\0';     // 去掉 fgets 留下的行尾换行
 
         bool success = false;
         word_t val = expr(e, &success);
@@ -204,12 +222,12 @@ void sdb_expr_test(char *file) {
             pass++;
         } else {
             fail++;
-            printf("FAIL: %s = %u (expect %u)\n", e, val, expect);
+            printf(ANSI_FMT("FAIL: %s = %u (expect %u)\n", ANSI_FG_RED), e, val, expect);
         }
     }
 
     fclose(fp);
-    printf("expr test: %d passed, %d failed\n", pass, fail);
+    printf(ANSI_FMT("expr test: %d passed, %d failed\n", ANSI_FG_GREEN), pass, fail);
     exit(0);        // 测完直接退出, 不进交互界面
 }
 

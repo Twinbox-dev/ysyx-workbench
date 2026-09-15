@@ -34,6 +34,7 @@ static char *code_format =
 
 /* 生成一个小于 n 的随机数 */
 static uint32_t choose(uint32_t n) {
+	// rand() % n 能产生 0; 但是choose(0)会导致除0错误,所以在此用下面的方式避免除零
     return (n == 0) ? 0 : rand() % n;
 }
 
