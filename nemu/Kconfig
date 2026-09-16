@@ -151,6 +151,13 @@ config ITRACE_COND
   string "Only trace instructions when the condition is true"
   default "true"
 
+config WATCHPOINT
+  bool "Enable watchpoint"
+  default y
+  help
+    Check watchpoints after each instruction. When a watchpoint is
+    triggered, NEMU pauses and returns to the monitor.
+    Note that this will reduce the performance of NEMU.
 
 config DIFFTEST
   depends on TARGET_NATIVE_ELF

@@ -18,7 +18,14 @@
 
 #include <common.h>
 
+// exprssion
 word_t expr(char *e, bool *success);
 void sdb_expr_test(char *file);
+
+// watchpoint
+void set_watchpoint(char *e);
+void delete_watchpoint(int NO);
+bool check_watchpoints();
+void print_watchpoints();
 
 #endif

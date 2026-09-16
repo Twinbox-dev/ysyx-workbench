@@ -96,3 +96,72 @@ void free_wp(WP *wp){
 	// 企图释放一个还没被开辟出来的链表节点, 调用者应该保证不可能发生该事件
 	assert(0 && "Freed a linked list node which has not been allocated.");
 }
+
+/* 给 sdb.c 提供函数调用以实现 w EXPR: 设置监视点 */
+void set_watchpoint(char *e) {
+    WP *wp = new_wp();
+
+    bool success = false;
+    word_t val = expr(e, &success);
+    if (!success) {
+        free_wp(wp);            // 表达式非法, 把监视点还回去
+        printf("Bad expression: %s\n", e);
+        return;
+    }
+
+	// KISS: 过长直接断言
+    assert(strlen(e) < sizeof(wp->expr) && "Expression is too long!Please adjust the sizeof WP->expr");
+    strcpy(wp->expr, e);
+    wp->old_val = val;
+
+    printf("Watchpoint %d: %s = " FMT_WORD "\n", wp->NO, wp->expr, val);
+}
+
+/* 给 sdb.c 提供函数调用以实现 d N: 删除编号为 NO 的监视点 (先按编号找到结点, 再释放). */
+void delete_watchpoint(int NO) {
+    for (WP *wp = head; wp != NULL; wp = wp->next) {
+        if (wp->NO == NO) {
+            free_wp(wp);	// 无需将数据置0,因为后续重新开辟该节点的时候不会和old_val比较
+            printf("Watchpoint %d deleted\n", NO);
+            return;
+        }
+    }
+
+	// 这里不使用assert断言,因为考虑到用户输错是正常行为,无需终止程序
+    printf("Watchpoint %d does not exist\n", NO);
+}
+
+/* 给 sdb.c 提供函数调用以实现 info w: 打印所有监视点及其最近记录的值 */
+void print_watchpoints() {
+    if (head == NULL) {
+        printf("No watchpoints\n");
+        return;
+    }
+
+    for (WP *wp = head; wp != NULL; wp = wp->next) {
+        printf("Watchpoint %d: %s = " FMT_WORD "\n", wp->NO, wp->expr, wp->old_val);
+    }
+}
+
+/* 给src/cpu/cpu-exec.c提供的接口.遍历所有监视点, 重新求值并与 old_val 比较.
+ * 有变化: 打印旧值/新值, 更新 old_val, 返回 true (调用方据此暂停). */
+bool check_watchpoints() {
+    bool triggered = false;
+
+    for (WP *wp = head; wp != NULL; wp = wp->next) {
+        bool success = false;
+        word_t val = expr(wp->expr, &success);
+        if (!success) continue;         // 求值失败, 跳过 (不应发生)
+
+        if (val != wp->old_val) {
+            printf("Watchpoint %d: %s\n", wp->NO, wp->expr);
+            printf("Old value = " FMT_WORD "\n", wp->old_val);
+            printf("New value = " FMT_WORD "\n", val);
+
+            wp->old_val = val;          // 更新基准, 以便继续监视下一次变化/防止持续触发中断
+            triggered = true;
+        }
+    }
+
+    return triggered;
+}
