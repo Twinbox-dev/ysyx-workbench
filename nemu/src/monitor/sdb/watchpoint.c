@@ -15,10 +15,6 @@
 
 #include "sdb.h"
 
-#define NR_WP 32
-static WP wp_pool[NR_WP] = {};
-static WP *head = NULL, *free_ = NULL;	// head free_ 都是静态 WP* 类型的指针
-
 typedef struct watchpoint {
 	int NO;
 	struct watchpoint *next;
@@ -28,7 +24,9 @@ typedef struct watchpoint {
 	word_t old_val;   // 存储表达式最近的值
 } WP;
 
-
+#define NR_WP 32
+static WP wp_pool[NR_WP] = {};
+static WP *head = NULL, *free_ = NULL;	// head free_ 都是静态 WP* 类型的指针
 
 void init_wp_pool() {
 	for (int i = 0; i < NR_WP; i ++) {
@@ -56,7 +54,7 @@ static WP* new_wp() {
 
 	wp->next = head;		// 头插法插入新节点
 	head = wp;
-	return wp
+	return wp;
 /*
  * 第一次调用 new_wp() 后的内存布局:
  * wp_pool: NULL ← [WP0]   [WP1] → [WP2] → ... → [WP31] → NULL
@@ -98,4 +96,3 @@ void free_wp(WP *wp){
 	// 企图释放一个还没被开辟出来的链表节点, 调用者应该保证不可能发生该事件
 	assert(0 && "Freed a linked list node which has not been allocated.");
 }
-
